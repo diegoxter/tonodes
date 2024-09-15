@@ -36,7 +36,7 @@ contract TonNode with Deployable {
         self.nodeEndTime = 86400; // 24 hours in seconds
     }
 
-    receive(msg: Refill) {
+    receive(_: Refill) {
         require(sender() == self.nodeManager, "refill: not authorized");
         let currentTime: Int = now();
         require(currentTime >= self.nodeStartTime + 26600,
