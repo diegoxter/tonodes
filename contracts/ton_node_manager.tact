@@ -20,15 +20,34 @@ struct NodeInstance {
     Owner: Address;
 }
 
+message GetInstancesIndex {
+}
+
+message GetInstanceInfo {
+    instanceIndex: Int
+}
+
+message InstanceIndex {
+    index: Int;
+}
+
+message InstanceAddy {
+    instanceAddy: Address
+}
+
+message ChangeConsensusAddress {
+    newConsensus: Address;
+}
+
 
 contract TonNodeManager with Deployable {
     owner: Address;
+    consensus: Address = newAddress(0, 0x0000000000000000000000000000000000000000000000000000000000000000);
     balance: Int as uint64 = 0;
     deployCost: Int = ton("1");
     instancesIndex: Int = 0;
     instances: map<Int, NodeInstance> = emptyMap();
     instancesPerAddres: map<Address, Int> = emptyMap();
-
 
     init(owner: Address) {
         self.owner = owner;
@@ -43,7 +62,13 @@ contract TonNodeManager with Deployable {
         require(msg.newCost >= ton("1"), "changeDeployCost: new amount too low");
 
         self.deployCost = msg.newCost;
-    }
+   }
+
+   receive(msg: ChangeConsensusAddress) {
+        require(sender() == self.owner, "changeConsensusAddress: not authorized");
+
+        self.consensus = msg.newConsensus;
+   }
 
     receive(msg: DeployNode) {
         let ctx: Context = context();
@@ -68,7 +93,6 @@ contract TonNodeManager with Deployable {
             Address: newNodeAddress,
             Owner: sender(),
         });
-
         self.instancesPerAddres.set(sender(), currentInstance);
 
         self.instancesIndex = currentInstance;
@@ -91,16 +115,36 @@ contract TonNodeManager with Deployable {
         });
     }
 
+    receive(_: GetInstancesIndex) {
+        require(sender() == self.consensus, "getInstancesIndex: Unauthorized");
+
+        self.reply(InstanceIndex{index: self.instancesIndex}.toCell());
+    }
+
+    receive(msg: GetInstanceInfo) {
+        require(sender() == self.consensus, "getInstancesInfo: Unauthorized");
+        require(msg.instanceIndex <= self.instancesIndex, "getInstancesInfo: invalid node index");
+        let notSureIfExists: NodeInstance? = self.instances.get(msg.instanceIndex);
+
+        if (notSureIfExists != null) {
+            let itExists: NodeInstance = self.instances.get(msg.instanceIndex)!!;
+
+            self.reply(InstanceAddy{instanceAddy: itExists.Address}.toCell());
+        } else {
+            dump("error?");
+        }
+    }
+
     fun getNodeStateInit(uid: String, nodeOwner: Address): StateInit {
         return initOf TonNode(uid, myAddress(), nodeOwner, now());
     }
 
-    get fun instancesIndex(): Int {
-        return self.instancesIndex;
-    }
-
     get fun instanceInfoPerIndex(index: Int): NodeInstance? {
         return self.instances.get(index)
+    }
+
+    get fun instancesIndex(): Int {
+        return self.instancesIndex;
     }
 
     get fun instancesPerUser(user: Address): map<Int, NodeInstance> {

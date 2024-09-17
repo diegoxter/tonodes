@@ -21,6 +21,15 @@ struct NodeState {
     nodeEndTime: Int as uint64;    // in seconds
 }
 
+message GetIsNodeActiveStatus {
+}
+
+
+message NodeActiveStatus {
+    isActive: Bool;
+}
+
+
 contract TonNode with Deployable {
     nodeManager: Address;
     nodeUID: String;
@@ -48,6 +57,12 @@ contract TonNode with Deployable {
 
         self.nodeStartTime = currentTime;
         self.nodeEndTime = remainingTime + 86400;
+    }
+
+    receive(_: GetIsNodeActiveStatus) {
+        self.reply(NodeActiveStatus{
+            isActive: (self.nodeStartTime + self.nodeEndTime) > now()
+        }.toCell());
     }
 
     get fun instanceInfo(): NodeState {

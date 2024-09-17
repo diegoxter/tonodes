@@ -1,1 +1,1 @@
-export * from "../build/TonNodeManager/tact_TonNodeManager";
+export * from "../build/NodeConsensus/tact_TonNodeManager";

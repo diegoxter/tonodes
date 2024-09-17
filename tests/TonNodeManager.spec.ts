@@ -64,6 +64,24 @@ describe("TonNodeManager", () => {
         const previousDeployCost = await tonNodeManager.getDeployCost();
         expect(previousDeployCost.toString()).toEqual(toNano("1").toString());
 
+        blockchain.now += 5;
+
+        const failedChangeDCost2 = await tonNodeManager.send(
+            deployer.getSender(),
+            { value: toNano("123") },
+            {
+                $$type: "ChangeDeployCost",
+                newCost: toNano("0.001"),
+            },
+        );
+
+        expect(failedChangeDCost2.transactions).toHaveTransaction({
+            to: tonNodeManager.address,
+            exitCode: 57662,
+        });
+    });
+
+    it("should change it's internal variables", async () => {
         const changeDCost = await tonNodeManager.send(
             deployer.getSender(),
             { value: toNano("123") },
@@ -81,22 +99,6 @@ describe("TonNodeManager", () => {
 
         const newDeployCost = await tonNodeManager.getDeployCost();
         expect(newDeployCost.toString()).toEqual(toNano("2").toString());
-    });
-
-    it("should change it's internal variables", async () => {
-        const failedChangeDCost2 = await tonNodeManager.send(
-            deployer.getSender(),
-            { value: toNano("123") },
-            {
-                $$type: "ChangeDeployCost",
-                newCost: toNano("0.001"),
-            },
-        );
-
-        expect(failedChangeDCost2.transactions).toHaveTransaction({
-            to: tonNodeManager.address,
-            exitCode: 57662,
-        });
     });
 
     it("should deploy new nodes", async () => {
@@ -131,6 +133,65 @@ describe("TonNodeManager", () => {
         const nodeInstance = TonNode.fromAddress(deployedInstance.Address);
 
         expect(nodeInstance?.address.equals(deployedInstance.Address));
+    });
+
+    it("should manage several nodes", async () => {
+        const notDeployer = await blockchain.treasury("notDeployer");
+        const notDeployer2 = await blockchain.treasury("notDeployer2");
+        const notDeployer3 = await blockchain.treasury("notDeployer3");
+        const notDeployer4 = await blockchain.treasury("notDeployer4");
+        const notDeployer5 = await blockchain.treasury("notDeployer5");
+
+        const newNodeUID = "test-id-";
+        let nodeIndex = 1;
+        const usersArray = [
+            deployer,
+            notDeployer,
+            notDeployer2,
+            notDeployer3,
+            notDeployer4,
+            notDeployer5,
+        ];
+
+        for (const user of usersArray) {
+            await tonNodeManager.send(
+                user.getSender(),
+                { value: toNano("1") },
+                {
+                    $$type: "DeployNode",
+                    newUID: newNodeUID + nodeIndex,
+                    body: {
+                        $$type: "Params",
+                        nodeUID: newNodeUID,
+                        nodeOwner: user.address,
+                    },
+                },
+            );
+
+            nodeIndex += 1;
+            blockchain.now += 10;
+        }
+
+        const deployedInstancesIndex = await tonNodeManager.getInstancesIndex();
+        expect(deployedInstancesIndex.toString()).toEqual("6");
+        const deployedInstances = [];
+
+        for (let index = 0; index < Number(deployedInstancesIndex); index++) {
+            deployedInstances[index] = await tonNodeManager.getInstanceInfoPerIndex(
+                BigInt(index + 1),
+            );
+        }
+
+        for (let index = 0; index < deployedInstances.length; index++) {
+            expect(cleanObject(deployedInstances[index])).toEqual(
+                cleanObject({
+                    $$type: "NodeInstance",
+                    UID: "test-id-" + (index + 1),
+                    Address: deployedInstances[index].Address,
+                    Owner: usersArray[index].address,
+                }),
+            );
+        }
     });
 
     it("should not deploy if the value sent is not enough", async () => {
