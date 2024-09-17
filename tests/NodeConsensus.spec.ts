@@ -125,7 +125,7 @@ describe("NodeConsensus", () => {
         const newUID = "test-uid-A";
         await tonNodeManager.send(
             deployer.getSender(),
-            { value: toNano("1") },
+            { value: toNano("1.1") },
             {
                 $$type: "DeployNode",
                 newUID: newUID + 1,
@@ -155,7 +155,7 @@ describe("NodeConsensus", () => {
 
         await tonNodeManager.send(
             deployer.getSender(),
-            { value: toNano("1") },
+            { value: toNano("1.1") },
             {
                 $$type: "DeployNode",
                 newUID: newUID + 2,
@@ -189,7 +189,7 @@ describe("NodeConsensus", () => {
         blockchain.now += 310;
         await tonNodeManager.send(
             deployer.getSender(),
-            { value: toNano("1") },
+            { value: toNano("1.1") },
             {
                 $$type: "DeployNode",
                 newUID: newUID + 2,

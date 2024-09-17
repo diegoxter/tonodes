@@ -51,12 +51,13 @@ contract TonNode with Deployable {
         require(currentTime >= self.nodeStartTime + 26600,
             "refill: must refill at least 12 hours before the node closes");
 
-
         let remainingTime: Int = (self.nodeStartTime + self.nodeEndTime) - currentTime <= 0
             ? 0 : (self.nodeStartTime + self.nodeEndTime) - currentTime;
 
         self.nodeStartTime = currentTime;
         self.nodeEndTime = remainingTime + 86400;
+
+        self.reply("Done!".asComment());
     }
 
     receive(_: GetIsNodeActiveStatus) {

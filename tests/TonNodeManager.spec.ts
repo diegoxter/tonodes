@@ -79,6 +79,20 @@ describe("TonNodeManager", () => {
             to: tonNodeManager.address,
             exitCode: 57662,
         });
+
+        const failedChangeDCost3 = await tonNodeManager.send(
+            notDeployer.getSender(),
+            { value: toNano("0.1") },
+            {
+                $$type: "Withdraw",
+            },
+        );
+
+        expect(failedChangeDCost3.transactions).toHaveTransaction({
+            from: notDeployer.address,
+            to: tonNodeManager.address,
+            exitCode: 6391,
+        });
     });
 
     it("should change it's internal variables", async () => {
@@ -108,7 +122,7 @@ describe("TonNodeManager", () => {
 
         await tonNodeManager.send(
             notDeployer.getSender(),
-            { value: toNano("1") },
+            { value: toNano("1.1") },
             {
                 $$type: "DeployNode",
                 newUID: newNodeUID,
@@ -156,7 +170,7 @@ describe("TonNodeManager", () => {
         for (const user of usersArray) {
             await tonNodeManager.send(
                 user.getSender(),
-                { value: toNano("1") },
+                { value: toNano("1.1") },
                 {
                     $$type: "DeployNode",
                     newUID: newNodeUID + nodeIndex,
@@ -192,6 +206,73 @@ describe("TonNodeManager", () => {
                 }),
             );
         }
+    });
+
+    it("should receive TON and allow the owner to withdraw it", async () => {
+        const notDeployer = await blockchain.treasury("notDeployer");
+        const notDeployer2 = await blockchain.treasury("notDeployer2");
+        const notDeployer3 = await blockchain.treasury("notDeployer3");
+        const notDeployer4 = await blockchain.treasury("notDeployer4");
+        const notDeployer5 = await blockchain.treasury("notDeployer5");
+
+        const initialValue = await tonNodeManager.getBalance();
+        expect(initialValue == 0n).toBeTruthy();
+
+        const newNodeUID = "test-id-";
+        let nodeIndex = 1;
+        const usersArray = [
+            deployer,
+            notDeployer,
+            notDeployer2,
+            notDeployer3,
+            notDeployer4,
+            notDeployer5,
+        ];
+
+        let valueTracker = 1n;
+        const tolerance = "0.1";
+        for (const user of usersArray) {
+            await tonNodeManager.send(
+                user.getSender(),
+                { value: toNano("1.1") },
+                {
+                    $$type: "DeployNode",
+                    newUID: newNodeUID + nodeIndex,
+                    body: {
+                        $$type: "Params",
+                        nodeUID: newNodeUID,
+                        nodeOwner: user.address,
+                    },
+                },
+            );
+
+            nodeIndex += 1;
+            blockchain.now += 10;
+            const currentValue = await tonNodeManager.getBalance();
+
+            expect(currentValue).toBeGreaterThanOrEqual(
+                toNano(valueTracker) - toNano(tolerance),
+            );
+
+            valueTracker += 1n;
+        }
+
+        const withdrawTx = await tonNodeManager.send(
+            deployer.getSender(),
+            { value: toNano("0.1") },
+            {
+                $$type: "Withdraw",
+            },
+        );
+
+        expect(withdrawTx.transactions).toHaveTransaction({
+            from: deployer.address,
+            to: tonNodeManager.address,
+            success: true,
+        });
+
+        const currentValue = await tonNodeManager.getBalance();
+        expect(currentValue).toBeLessThanOrEqual(toNano("0.02"));
     });
 
     it("should not deploy if the value sent is not enough", async () => {
@@ -249,7 +330,7 @@ describe("TonNodeManager", () => {
         const newNodeUID = "test-id";
         await tonNodeManager.send(
             notDeployer.getSender(),
-            { value: toNano("1") },
+            { value: toNano("1.1") },
             {
                 $$type: "DeployNode",
                 newUID: newNodeUID,
@@ -290,7 +371,7 @@ describe("TonNodeManager", () => {
         const newNodeUID = "test-id";
         const tx1 = await tonNodeManager.send(
             notDeployer.getSender(),
-            { value: toNano("1") },
+            { value: toNano("1.1") },
             {
                 $$type: "DeployNode",
                 newUID: newNodeUID,
@@ -335,7 +416,7 @@ describe("TonNodeManager", () => {
 
         await tonNodeManager.send(
             nodeOwner.getSender(),
-            { value: toNano("1") },
+            { value: toNano("1.1") },
             {
                 $$type: "DeployNode",
                 newUID: newNodeUID,

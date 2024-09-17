@@ -39,6 +39,9 @@ message ChangeConsensusAddress {
     newConsensus: Address;
 }
 
+message Withdraw{
+}
+
 
 contract TonNodeManager with Deployable {
     owner: Address;
@@ -72,7 +75,7 @@ contract TonNodeManager with Deployable {
 
     receive(msg: DeployNode) {
         let ctx: Context = context();
-        require(ctx.value == self.deployCost, "deployNode: invalid amount of Toncoins");
+        require(ctx.value == self.deployCost + ton("0.1"), "deployNode: invalid amount of Toncoins");
 
         let init: StateInit = self.getNodeStateInit(msg.newUID, sender());
         let newNodeAddress: Address = contractAddress(init);
@@ -80,9 +83,9 @@ contract TonNodeManager with Deployable {
 
         send(SendParameters{
             to: newNodeAddress,
-            value: 0,
+            value: ton("0.1"),
             bounce: false,
-            mode: SendRemainingValue,
+            mode: 0,
             body: NodeInit{body: msg.body}.toCell(),
             code: init.code,
             data: init.data
@@ -100,7 +103,8 @@ contract TonNodeManager with Deployable {
 
     receive(msg: RefillNode) {
         let ctx: Context = context();
-        require(ctx.value >= self.deployCost, "refillNode: value sent not enough for a refill");
+        require(ctx.value >= self.deployCost + ton("0.023"),
+            "refillNode: value sent not enough for a refill");
         require(msg.nodeInstance <= self.instancesIndex, "refillNode: invalid node index");
 
         let refilledInstance: NodeInstance = self.instances.get(msg.nodeInstance)!!;
@@ -108,9 +112,9 @@ contract TonNodeManager with Deployable {
 
         send(SendParameters{
             to: refilledInstance.Address,
-            value:  ton("0.01"),
+            value: 0,
             bounce: false,
-            mode: SendPayGasSeparately,
+            mode: SendRemainingValue,
             body: Refill{amountOfDays: 1}.toCell(),
         });
     }
@@ -133,6 +137,16 @@ contract TonNodeManager with Deployable {
         } else {
             dump("error?");
         }
+    }
+
+    receive(_: Withdraw) {
+        require(sender() == self.owner, "withdraw: not authorized");
+        send(SendParameters{
+            to: sender(),
+            bounce: true,
+            value: myBalance() - context().value - ton("0.01"),
+            mode: SendRemainingValue + SendIgnoreErrors
+        });
     }
 
     fun getNodeStateInit(uid: String, nodeOwner: Address): StateInit {
@@ -168,7 +182,8 @@ contract TonNodeManager with Deployable {
     }
 
     get fun balance(): Int {
-        require(sender() == self.owner, "getBalance: not authorized");
-        return myBalance()
+      //  require(sender() == self.owner, "getBalance: not authorized");
+        let currentBalance: Int = myBalance();
+        return currentBalance;
     }
 }
