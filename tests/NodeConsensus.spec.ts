@@ -4,24 +4,38 @@ import {
     SandboxContract,
     TreasuryContract,
 } from "@ton/sandbox";
-import { toNano, beginCell } from "@ton/core";
+import { toNano, beginCell, address } from "@ton/core";
 import { NodeConsensus } from "../wrappers/NodeConsensus";
 import { TonNodeManager } from "../wrappers/TonNodeManager";
+import { NodeCoin } from "../wrappers/NodeCoin";
+import { NodeCoinWallet } from "../build/NodeConsensus/tact_NodeCoinWallet";
 import "@ton/test-utils";
+import { buildOnchainMetadata } from "../scripts/jetton-helpers";
+
+const jettonParams = {
+    name: "NodeCoin",
+    description: "The coin of your favorite Node provider",
+    symbol: "NCOI",
+    image: "https://play-lh.googleusercontent.com/ahJtMe0vfOlAu1XJVQ6rcaGrQBgtrEZQefHy7SXB7jpijKhu1Kkox90XDuH8RmcBOXNn",
+};
+let content = buildOnchainMetadata(jettonParams);
+let max_supply = toNano(1234766689011);
 
 describe("NodeConsensus", () => {
     let blockchain: Blockchain;
     let deployer: SandboxContract<TreasuryContract>;
     let nodeConsensus: SandboxContract<NodeConsensus>;
     let tonNodeManager: SandboxContract<TonNodeManager>;
+    let token: SandboxContract<NodeCoin>;
 
     beforeEach(async () => {
         blockchain = await Blockchain.create();
         deployer = await blockchain.treasury("deployer");
+
+        // deploy ton node manage
         tonNodeManager = blockchain.openContract(
             await TonNodeManager.fromInit(deployer.address),
         );
-
         const tonNMDeploy = await tonNodeManager.send(
             deployer.getSender(),
             {
@@ -32,7 +46,6 @@ describe("NodeConsensus", () => {
                 queryId: 0n,
             },
         );
-
         expect(tonNMDeploy.transactions).toHaveTransaction({
             from: deployer.address,
             to: tonNodeManager.address,
@@ -40,8 +53,31 @@ describe("NodeConsensus", () => {
             success: true,
         });
 
+        // deploy token
+        token = blockchain.openContract(
+            await NodeCoin.fromInit(deployer.address, content, max_supply),
+        );
+        const tDeployResult = await token.send(
+            deployer.getSender(),
+            { value: toNano("0.05") },
+            {
+                $$type: "Deploy",
+                queryId: 0n,
+            },
+        );
+        expect(tDeployResult.transactions).toHaveTransaction({
+            from: deployer.address,
+            to: token.address,
+            deploy: true,
+            success: true,
+        });
+
         nodeConsensus = blockchain.openContract(
-            await NodeConsensus.fromInit(deployer.address, tonNodeManager.address),
+            await NodeConsensus.fromInit(
+                deployer.address,
+                tonNodeManager.address,
+                token.address,
+            ),
         );
 
         const deployResult = await nodeConsensus.send(
@@ -61,6 +97,16 @@ describe("NodeConsensus", () => {
             deploy: true,
             success: true,
         });
+        expect(deployResult.transactions).toHaveTransaction({
+            from: nodeConsensus.address,
+            to: token.address,
+            success: true,
+        });
+        expect(deployResult.transactions).toHaveTransaction({
+            from: token.address,
+            to: nodeConsensus.address,
+            success: true,
+        });
 
         await tonNodeManager.send(
             deployer.getSender(),
@@ -68,6 +114,15 @@ describe("NodeConsensus", () => {
             {
                 $$type: "ChangeConsensusAddress",
                 newConsensus: nodeConsensus.address,
+            },
+        );
+
+        await token.send(
+            deployer.getSender(),
+            { value: toNano("123") },
+            {
+                $$type: "AddNewMinter",
+                new_minter_address: nodeConsensus.address,
             },
         );
 
@@ -222,5 +277,115 @@ describe("NodeConsensus", () => {
         checkIfTxsAreCorrect(tx3.transactions);
         const newValue2 = await nodeConsensus.getCurrentInstancesIndex();
         expect(newValue2.toString()).toBe(deployedInstancesIndex.toString());
+    });
+
+    it("should send winner nodes their rewards", async () => {
+        const notDeployer = await blockchain.treasury("notDeployer");
+        const notDeployer2 = await blockchain.treasury("notDeployer2");
+        const notDeployer3 = await blockchain.treasury("notDeployer3");
+        const notDeployer4 = await blockchain.treasury("notDeployer4");
+        const notDeployer5 = await blockchain.treasury("notDeployer5");
+
+        const newNodeUID = "test-id-";
+        let nodeIndex = 1;
+        const usersArray = [
+            notDeployer,
+            notDeployer2,
+            notDeployer3,
+            notDeployer4,
+            notDeployer5,
+        ];
+
+        for (const user of usersArray) {
+            await tonNodeManager.send(
+                user.getSender(),
+                { value: toNano("1.1") },
+                {
+                    $$type: "DeployNode",
+                    newUID: newNodeUID + nodeIndex,
+                    body: {
+                        $$type: "Params",
+                        nodeUID: newNodeUID,
+                        nodeOwner: user.address,
+                    },
+                },
+            );
+
+            nodeIndex += 1;
+            blockchain.now += 10;
+        }
+
+        const tx1 = await nodeConsensus.send(
+            deployer.getSender(),
+            { value: toNano("0.1") },
+            {
+                $$type: "ChooseWinner",
+            },
+        );
+
+        const consultedNode1 = await nodeConsensus.getLastConsultedNodeId();
+        const winnerNodeInfo1 = await tonNodeManager.getInstanceInfoPerIndex(consultedNode1);
+        const winnerNodeAddress1 = await token.getGetWalletAddress(winnerNodeInfo1.Address);
+        const winnerWallet1 = blockchain.openContract(
+            NodeCoinWallet.fromAddress(winnerNodeAddress1),
+        );
+
+        expect(tx1.transactions).toHaveTransaction({
+            from: nodeConsensus.address,
+            to: token.address,
+            success: true,
+        });
+        expect(tx1.transactions).toHaveTransaction({
+            from: token.address,
+            to: winnerNodeAddress1,
+            success: true,
+            deploy: true,
+        });
+
+        const tokenDataAfterTx = await token.getGetJettonData();
+        expect(
+            tokenDataAfterTx.total_supply.toString() == toNano("5").toString(),
+        ).toBeTruthy();
+
+        const winnerBalance1 = (await winnerWallet1.getGetWalletData()).balance;
+        expect(winnerBalance1 == toNano("5")).toBeTruthy();
+        blockchain.now += 320;
+
+        const tx2 = await nodeConsensus.send(
+            deployer.getSender(),
+            { value: toNano("0.1") },
+            {
+                $$type: "ChooseWinner",
+            },
+        );
+
+        const consultedNode2 = await nodeConsensus.getLastConsultedNodeId();
+        const winnerNodeInfo2 = await tonNodeManager.getInstanceInfoPerIndex(consultedNode2);
+        const winnerNodeAddress2 = await token.getGetWalletAddress(winnerNodeInfo2.Address);
+        const winnerWallet2 = blockchain.openContract(
+            NodeCoinWallet.fromAddress(winnerNodeAddress2),
+        );
+
+        expect(tx2.transactions).toHaveTransaction({
+            from: nodeConsensus.address,
+            to: token.address,
+            success: true,
+        });
+        expect(tx2.transactions).toHaveTransaction({
+            from: token.address,
+            to: winnerNodeAddress2,
+            success: true,
+            deploy: true,
+        });
+
+        const tokenDataAfterTx2 = await token.getGetJettonData();
+        const newvalue =
+            winnerNodeAddress2.toString() == winnerNodeAddress1.toString() ? "10" : "5";
+        expect(
+            tokenDataAfterTx2.total_supply.toString() == toNano("10").toString(),
+        ).toBeTruthy();
+
+        const winnerBalance2 = (await winnerWallet2.getGetWalletData()).balance;
+        expect(winnerBalance2 == toNano(newvalue)).toBeTruthy();
     });
 });

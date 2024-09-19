@@ -24,11 +24,9 @@ struct NodeState {
 message GetIsNodeActiveStatus {
 }
 
-
 message NodeActiveStatus {
     isActive: Bool;
 }
-
 
 contract TonNode with Deployable {
     nodeManager: Address;
