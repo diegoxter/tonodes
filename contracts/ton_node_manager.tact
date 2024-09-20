@@ -56,10 +56,6 @@ contract TonNodeManager with Deployable {
         self.owner = owner;
     }
 
-    receive("withdraw") {
-        require(sender() == self.owner, "withdraw: not authorized");
-    }
-
    receive(msg: ChangeDeployCost) {
         require(sender() == self.owner, "changeDeployCost: not authorized");
         require(msg.newCost >= ton("1"), "changeDeployCost: new amount too low");

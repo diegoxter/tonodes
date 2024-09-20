@@ -21,7 +21,8 @@ contract NodeConsensus with Deployable {
     lastConsensusReachedIn: Int as uint64 = 0;
     minutesForNextConsensus: Int as uint8 = 5;
     lastConsultedNode: Address;
-    lastConsultedNodeID : Int = 0;
+    lastConsultedNodeID: Int = 0;
+    attempts: Int = 0;
 
     init(owner: Address, nodeManager: Address, ncoin: Address) {
         self.owner = owner;
@@ -76,9 +77,14 @@ contract NodeConsensus with Deployable {
 
     receive(msg: NodeActiveStatus) {
         require(sender() == self.lastConsultedNode, "nodeActiveStatus: Unauthorized");
-        if (msg.isActive) {
-            dump("is active");
 
+        let emit_msg: StringBuilder = beginString();
+        emit_msg.append("Attempt number ");
+        emit_msg.append((self.attempts + 1).toString());
+        emit_msg.append(" to pick a winner.");
+        emit(emit_msg.toCell());
+
+        if (msg.isActive) {
             send(SendParameters{
                 to: self.ncoin,
                 value: 0,
@@ -90,10 +96,26 @@ contract NodeConsensus with Deployable {
             });
 
             self.lastConsensusReachedIn = now();
-        } else {
-            dump("is not active"); // To do test this
 
-            self.getInstanceInfo(self.currentInstancesIndex);
+            if (self.attempts > 0) {
+                self.attempts = 0;
+            }
+
+            emit("A winner was chosen!".asComment());
+        } else {
+            self.attempts = self.attempts + 1;
+
+            if (self.attempts == 3) {
+                self.attempts = 0;
+                self.lastConsensusReachedIn = now();
+
+                // We give up :(
+                emit("Failed to pick a valid node! Try again later".asComment());
+            } else {
+                emit("Failed to pick a valid node! Retrying...".asComment());
+
+                self.getInstanceInfo(self.currentInstancesIndex);
+            }
         }
     }
 
@@ -103,7 +125,6 @@ contract NodeConsensus with Deployable {
 
         self.ncoinWallet = msg.jettonWallet;
     }
-
 
     fun getInstanceInfo(instancesIndex: Int) {
         let chosen: Int = random(1, instancesIndex);
