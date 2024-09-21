@@ -23,6 +23,7 @@ contract NodeConsensus with Deployable {
     lastConsultedNode: Address;
     lastConsultedNodeID: Int = 0;
     attempts: Int = 0;
+    multiplier: Int = 1;
 
     init(owner: Address, nodeManager: Address, ncoin: Address) {
         self.owner = owner;
@@ -91,7 +92,7 @@ contract NodeConsensus with Deployable {
                 mode: SendRemainingValue + SendIgnoreErrors,
                 body: MintAmountTo{
                     to: self.lastConsultedNode,
-                    amount: ton("5")
+                    amount: ton("5") * self.multiplier
                 }.toCell(),
             });
 
@@ -101,6 +102,10 @@ contract NodeConsensus with Deployable {
                 self.attempts = 0;
             }
 
+            if (self.multiplier > 1) {
+                self.multiplier = 1;
+            }
+
             emit("A winner was chosen!".asComment());
         } else {
             self.attempts = self.attempts + 1;
@@ -108,6 +113,7 @@ contract NodeConsensus with Deployable {
             if (self.attempts == 3) {
                 self.attempts = 0;
                 self.lastConsensusReachedIn = now();
+                self.multiplier = self.multiplier + 1;
 
                 // We give up :(
                 emit("Failed to pick a valid node! Try again later".asComment());

@@ -496,6 +496,7 @@ describe("NodeConsensus", () => {
         });
 
         const winnerBalance1 = (await winnerWallet1.getGetWalletData()).balance;
-        expect(winnerBalance1 == toNano("5")).toBeTruthy();
+        // @note here we *2 the result, to match the current multiplier
+        expect(winnerBalance1 == toNano("5") * 2n).toBeTruthy();
     });
 });
