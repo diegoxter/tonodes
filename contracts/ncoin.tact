@@ -44,6 +44,7 @@ contract NodeCoin with JettonMaster, Deployable {
     owner: Address;
     minters: map<Address, Bool>;
     jetton_content: Cell;
+    max_supply: Int as coins;
 
     init(owner: Address, content: Cell, max_supply: Int) {
         self.total_supply = 0;
@@ -51,6 +52,7 @@ contract NodeCoin with JettonMaster, Deployable {
         self.owner = owner;
         self.jetton_content = content;
         self.minters = emptyMap();
+        self.max_supply = max_supply;
     }
 
     receive(msg: MintAmountTo) {
@@ -79,6 +81,11 @@ contract NodeCoin with JettonMaster, Deployable {
         };
         self._mint_validate(ctx, msg);
         self._mint(ctx, msg);
+    }
+
+    receive("Toggle pause") {
+        require(sender() == self.owner, "Pause: not authorized");
+        self.mintable = !self.mintable;
     }
 
     receive(_: GetNodeConsensusWallet) {
@@ -110,6 +117,7 @@ contract NodeCoin with JettonMaster, Deployable {
     override inline fun _mint_validate(ctx: Context, msg: JettonMint) {
         require(ctx.sender == self.owner || self.minters.get(ctx.sender) == true, "JettonMaster: Sender is not a Jetton owner not a minter");
         require(self.mintable, "JettonMaster: Jetton is not mintable");
+        require(self.total_supply + msg.amount <= self.max_supply, "_mint: amount exceeds max_supply");
     }
 
     override inline fun calculate_jetton_wallet_init(owner_address: Address): StateInit {
