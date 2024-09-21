@@ -22,6 +22,11 @@ message MintAmountTo {
     amount: Int as coins;
 }
 
+message CallerBalance {
+    ncoin: Address;
+    balance: Int;
+}
+
 contract NodeCoinWallet with JettonWallet {
     balance: Int as coins = 0;
     owner: Address;
@@ -31,6 +36,10 @@ contract NodeCoinWallet with JettonWallet {
     init(owner: Address, jetton_master: Address) {
         self.owner = owner;
         self.jetton_master = jetton_master;
+    }
+
+    receive("balance") {
+        self.reply(CallerBalance{balance: self.balance, ncoin: self.jetton_master}.toCell());
     }
 
     override inline fun calculate_jetton_wallet_init(owner_address: Address): StateInit {

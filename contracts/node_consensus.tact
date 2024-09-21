@@ -132,6 +132,10 @@ contract NodeConsensus with Deployable {
         self.ncoinWallet = msg.jettonWallet;
     }
 
+    receive("ncoin") {
+        self.reply(Ncoin{nCoin:self.ncoin}.toCell());
+    }
+
     fun getInstanceInfo(instancesIndex: Int) {
         let chosen: Int = random(1, instancesIndex);
         self.lastConsultedNodeID = chosen;

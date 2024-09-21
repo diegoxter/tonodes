@@ -10,6 +10,11 @@ message ChangeDeployCost {
     newCost: Int;
 }
 
+message CollectReward {
+    forAll: Bool;
+    nodeID: Int?;
+}
+
 message RefillNode {
     nodeInstance: Int;
 }
@@ -42,10 +47,15 @@ message ChangeConsensusAddress {
 message Withdraw{
 }
 
+message Ncoin{
+    nCoin: Address;
+}
+
 
 contract TonNodeManager with Deployable {
     owner: Address;
     consensus: Address = newAddress(0, 0x0000000000000000000000000000000000000000000000000000000000000000);
+    ncoin: Address;
     balance: Int as uint64 = 0;
     deployCost: Int = ton("1");
     instancesIndex: Int = 0;
@@ -54,6 +64,7 @@ contract TonNodeManager with Deployable {
 
     init(owner: Address) {
         self.owner = owner;
+        self.ncoin = self.consensus;
     }
 
    receive(msg: ChangeDeployCost) {
@@ -67,6 +78,14 @@ contract TonNodeManager with Deployable {
         require(sender() == self.owner, "changeConsensusAddress: not authorized");
 
         self.consensus = msg.newConsensus;
+
+        send(SendParameters{
+            to: msg.newConsensus,
+            value: 0,
+            bounce: false,
+            mode: SendRemainingValue ,
+            body: "ncoin".asComment(),
+        });
    }
 
     receive(msg: DeployNode) {
@@ -135,6 +154,7 @@ contract TonNodeManager with Deployable {
         }
     }
 
+    // @note for the NodeManager owner to withdraw the collected TON
     receive(_: Withdraw) {
         require(sender() == self.owner, "withdraw: not authorized");
         send(SendParameters{
@@ -145,8 +165,58 @@ contract TonNodeManager with Deployable {
         });
     }
 
+    receive(msg: CollectReward) {
+        if (msg.forAll == true) {
+            let nodes: map<Int, NodeInstance> = self._instancesPerUser(sender());
+
+           foreach (key, _ in nodes) {
+               self._collectNodeRewards(key);
+           }
+
+        } else {
+            require(msg.nodeID != null, "CollectReward: invalid NodeID");
+            let nodeID: Int = msg.nodeID!!;
+            require(nodeID <= self.instancesIndex, "CollectReward: not a valid Node ID");
+
+            self._collectNodeRewards(nodeID);
+        }
+    }
+
+    receive(msg: Ncoin) {
+        require(sender() == self.consensus, "ncoin: not authorized");
+
+        self.ncoin = msg.nCoin;
+    }
+
     fun getNodeStateInit(uid: String, nodeOwner: Address): StateInit {
         return initOf TonNode(uid, myAddress(), nodeOwner, now());
+    }
+
+    fun _collectNodeRewards(nodeID: Int) {
+        let node: NodeInstance = self.instances.get(nodeID)!!;
+        require (sender() == node.Owner, "_collectNodeRewards: not the owner of the Node");
+
+        send(SendParameters{
+            to: node.Address,
+            value: 0,
+            mode: SendRemainingValue + SendIgnoreErrors,
+            body: Collect{
+                ncoin: self.ncoin
+            }.toCell()
+        });
+
+    }
+
+    fun _instancesPerUser(user: Address): map<Int, NodeInstance> {
+        let instancesArray: map<Int, NodeInstance> = emptyMap();
+
+       foreach (key, value in self.instancesPerAddres) {
+           if (key == user) {
+                instancesArray.set(value, self.instances.get(value));
+           }
+       }
+
+       return instancesArray;
     }
 
     get fun instanceInfoPerIndex(index: Int): NodeInstance? {
@@ -158,15 +228,7 @@ contract TonNodeManager with Deployable {
     }
 
     get fun instancesPerUser(user: Address): map<Int, NodeInstance> {
-       let instancesArray: map<Int, NodeInstance> = emptyMap();
-
-       foreach (key, value in self.instancesPerAddres) {
-           if (key == user) {
-                instancesArray.set(value, self.instances.get(value));
-           }
-       }
-
-       return instancesArray;
+       return self._instancesPerUser(user);
     }
 
     get fun owner(): Address {

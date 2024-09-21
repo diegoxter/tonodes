@@ -1,8 +1,13 @@
 import "@stdlib/deploy";
+import "./ncoin.tact";
 
 struct Params {
     nodeUID: String;
     nodeOwner: Address;
+}
+
+message Collect {
+    ncoin: Address;
 }
 
 message NodeInit {
@@ -43,6 +48,43 @@ contract TonNode with Deployable {
         self.nodeEndTime = 86400; // 24 hours in seconds
     }
 
+    receive(msg: CallerBalance) {
+        let wallet: Address = contractAddress(initOf NodeCoinWallet(myAddress(), msg.ncoin));
+        require(sender() == wallet, "Balance: not authorized");
+        require(msg.balance > 0, "Balance: no rewards to collect");
+
+        send(SendParameters{
+            to: wallet,
+            value: 0,
+            mode: SendRemainingValue | SendPayGasSeparately | SendBounceIfActionFail,
+            body: JettonTransfer{
+                query_id: 0,
+                amount: msg.balance,
+                destination: self.nodeOwner,
+                response_destination: self.nodeOwner,
+                custom_payload: emptyCell(),
+                forward_ton_amount: 0,
+                forward_payload: beginCell().endCell().asSlice(),
+            }.toCell(),
+        });
+    }
+
+    receive(msg: Collect) {
+        let wallet: Address = contractAddress(initOf NodeCoinWallet(myAddress(), msg.ncoin));
+        send(SendParameters{
+            to: wallet,
+            value: 0,
+            mode: SendRemainingValue + SendIgnoreErrors,
+            body: "balance".asComment(),
+        });
+    }
+
+    receive(_: GetIsNodeActiveStatus) {
+        self.reply(NodeActiveStatus{
+            isActive: (self.nodeStartTime + self.nodeEndTime) > now()
+        }.toCell());
+    }
+
     receive(_: Refill) {
         require(sender() == self.nodeManager, "refill: not authorized");
         let currentTime: Int = now();
@@ -58,13 +100,7 @@ contract TonNode with Deployable {
         self.reply("Done!".asComment());
     }
 
-    receive(_: GetIsNodeActiveStatus) {
-        self.reply(NodeActiveStatus{
-            isActive: (self.nodeStartTime + self.nodeEndTime) > now()
-        }.toCell());
-    }
-
-    get fun instanceInfo(): NodeState {
+   get fun instanceInfo(): NodeState {
         return NodeState {
             nodeManager: self.nodeManager,
             nodeUID: self.nodeUID,
