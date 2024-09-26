@@ -1,27 +1,18 @@
 import "@stdlib/deploy";
+import "@stdlib/ownable";
 import "./ncoin.tact";
-
-struct Params {
-    nodeUID: String;
-    nodeOwner: Address;
-}
 
 message Collect {
     ncoin: Address;
 }
 
 message NodeInit {
-    body: Params;
-}
-
-message Refill {
-    amountOfDays: Int;
+    owner: Address;
 }
 
 struct NodeState {
-    nodeManager: Address;
-    nodeUID: String;
-    nodeOwner: Address;
+    owner: Address;
+    nodeID: Int;
     nodeStartTime: Int as uint64;  // unix timestamp
     nodeEndTime: Int as uint64;    // in seconds
 }
@@ -33,19 +24,21 @@ message NodeActiveStatus {
     isActive: Bool;
 }
 
-contract TonNode with Deployable {
-    nodeManager: Address;
-    nodeUID: String;
-    nodeOwner: Address;
+contract TonNode with Deployable, Ownable, OwnableTransferable {
+    nodeID: Int;
+    ton_node_admin: Address;
+    owner: Address;
     nodeStartTime: Int as uint32;  // unix timestamp
     nodeEndTime: Int as uint32;    // in seconds
 
-    init(uid: String, deployer: Address, owner: Address, startTime: Int) {
-        self.nodeUID = uid;
-        self.nodeManager = deployer;
-        self.nodeOwner = owner;
-        self.nodeStartTime = startTime;
+    init(tna: Address, ID: Int) {
+        self.nodeID = ID;
+        self.ton_node_admin = tna;
+        self.owner = sender();
         self.nodeEndTime = 86400; // 24 hours in seconds
+
+        let startTime = now();
+        self.nodeStartTime = startTime;
     }
 
     receive(msg: CallerBalance) {
@@ -60,8 +53,8 @@ contract TonNode with Deployable {
             body: JettonTransfer{
                 query_id: 0,
                 amount: msg.balance,
-                destination: self.nodeOwner,
-                response_destination: self.nodeOwner,
+                destination: self.owner,
+                response_destination: self.owner,
                 custom_payload: emptyCell(),
                 forward_ton_amount: 0,
                 forward_payload: beginCell().endCell().asSlice(),
@@ -85,8 +78,9 @@ contract TonNode with Deployable {
         }.toCell());
     }
 
-    receive(_: Refill) {
-        require(sender() == self.nodeManager, "refill: not authorized");
+    receive("refill") {
+
+        require(sender() == self.owner, "refill: not authorized");
         let currentTime: Int = now();
         require(currentTime >= self.nodeStartTime + 26600,
             "refill: must refill at least 12 hours before the node closes");
@@ -100,11 +94,18 @@ contract TonNode with Deployable {
         self.reply("Done!".asComment());
     }
 
+    receive("sayHi") {
+        emit("hi!".asComment());
+    }
+
+    // receive(msg: Transfer) {
+    //
+    // }
+
    get fun instanceInfo(): NodeState {
         return NodeState {
-            nodeManager: self.nodeManager,
-            nodeUID: self.nodeUID,
-            nodeOwner: self.nodeOwner,
+            owner: self.owner,
+            nodeID: self.nodeID,
             nodeStartTime: self.nodeStartTime,
             nodeEndTime: self.nodeEndTime,
         };
