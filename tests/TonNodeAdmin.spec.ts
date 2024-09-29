@@ -380,7 +380,7 @@ describe("TonNodeAdmin", () => {
 
         expect(failedTx2.transactions).toHaveTransaction({
             to: nodeInstance.address,
-            exitCode: 15886,
+            exitCode: 132,
         });
 
         // time moves on

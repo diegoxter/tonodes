@@ -10,19 +10,11 @@ message ChangeDeployCost {
 message CollectReward {
     forAll: Bool;
     nodeID: Int?;
+    ncoin: Address;
 }
 
 message RefillNode {
     nodeInstance: Int;
-}
-
-struct NodeInstance {
-    UID: String;
-    Address: Address;
-    Owner: Address;
-}
-
-message GetInstancesIndex {
 }
 
 message GetInstanceInfo {
@@ -52,18 +44,15 @@ message CreateNode {
     instanceInt: Int;
 }
 
-const zeroAddress: Address = newAddress(0, 0x0000000000000000000000000000000000000000000000000000000000000000);
-
 contract TonNodeFarm with Deployable, Ownable {
     owner: Address; // TonNodeAdmin
-    farm_owner: Address;
+    farm_owner: Address; // Actual user
     nodeArrayAddress: Address;
 
     init(ton_node_admin: Address, farm_owner: Address) {
         self.owner = ton_node_admin;
         self.farm_owner = farm_owner;
         self.nodeArrayAddress = zeroAddress;
-
     }
 
     receive(msg: CreateNode) {
@@ -83,7 +72,10 @@ contract TonNodeFarm with Deployable, Ownable {
 
         let arrayInit: StateInit = initOf OwnedNodesArray(myAddress());
         let arrayAddress: Address = contractAddress(arrayInit);
-        self.nodeArrayAddress = arrayAddress;
+
+        if (self.nodeArrayAddress == zeroAddress) {
+            self.nodeArrayAddress = arrayAddress;
+        }
 
         send(SendParameters{
             to: arrayAddress,
@@ -95,9 +87,35 @@ contract TonNodeFarm with Deployable, Ownable {
         });
     }
 
+    receive(msg: CollectReward) {
+        if (msg.forAll == true) {
+            send(SendParameters{
+                to: self.nodeArrayAddress,
+                value: 0,
+                bounce: false,
+                mode: SendRemainingValue,
+                body: "owned_instances_ids".asComment(),
+            });
+        } else {
+            let nodeAddress: Address = contractAddress(initOf TonNode(
+                self.owner, msg.nodeID!!
+            ));
+
+            send(SendParameters{
+                to: nodeAddress,
+                value: 0,
+                bounce: false,
+                mode: SendRemainingValue,
+                body: Collect{ncoin: msg.ncoin, farm_owner: self.farm_owner}.toCell()
+            });
+        }
+    }
+
     receive(msg: RefillNode) {
         self.requireOwner();
-        let nodeAddress: Address = contractAddress(initOf TonNode(self.owner, msg.nodeInstance));
+        let nodeAddress: Address = contractAddress(initOf TonNode(
+            self.owner, msg.nodeInstance
+        ));
 
         send(SendParameters{
             to: nodeAddress,
@@ -182,17 +200,18 @@ contract TonNodeAdmin with Deployable, Ownable {
         });
    }
 
-   receive(_: GetInstancesIndex) {
-        self.requireOwner();
-
+   receive("GetInstancesIndex") {
+        self.requireConsensus();
         self.reply(InstanceIndex{index: self.nodesIndex}.toCell());
    }
 
    receive(msg: GetInstanceInfo) {
-        self.requireOwner();
+        self.requireConsensus();
         self.requireValidNodeID(msg.instanceIndex);
 
-        let nodeAddress: Address = self._getNodeInstanceAddress(msg.instanceIndex);
+        let nodeAddress: Address = contractAddress(initOf TonNode(
+                myAddress(), msg.instanceIndex
+            ));
         self.reply(InstanceAddy{instanceAddy: nodeAddress}.toCell());
    }
 
@@ -207,28 +226,23 @@ contract TonNodeAdmin with Deployable, Ownable {
         });
     }
 
-    // receive(msg: CollectReward) {
-    //     if (msg.forAll == true) {
-    //         let nodes: map<Int, NodeInstance> = self._instancesPerUser(sender());
-    //
-    //        foreach (key, _ in nodes) {
-    //            self._collectNodeRewards(key);
-    //        }
-    //
-    //     } else {
-    //         require(msg.nodeID != null, "CollectReward: invalid NodeID");
-    //         let nodeID: Int = msg.nodeID!!;
-    //         require(nodeID <= self.nodesIndex, "CollectReward: not a valid Node ID");
-    //
-    //         self._collectNodeRewards(nodeID);
-    //     }
-    // }
+   receive(msg: CollectReward) {
+        let ownerWallet: Address = contractAddress(initOf TonNodeFarm(myAddress(), sender()));
 
-    receive(msg: Ncoin) {
+        send(SendParameters{
+            to: ownerWallet,
+            value: 0,
+            bounce: false,
+            mode: SendRemainingValue,
+            body: msg.toCell(),
+        });
+   }
+
+   receive(msg: Ncoin) {
         self.requireOwner();
 
         self.ncoin = msg.nCoin;
-    }
+   }
 
     
     // fun _collectNodeRewards(nodeID: Int) {
@@ -259,28 +273,32 @@ contract TonNodeAdmin with Deployable, Ownable {
        // return self._instancesPerUser(user);
     // }
 
-    get fun deployCost(): Int {
+   get fun deployCost(): Int {
         return self.deployCost;
-    }
+   }
 
-    get fun balance(): Int {
+   get fun balance(): Int {
       //  require(sender() == self.owner, "getBalance: not authorized");
         let currentBalance: Int = myBalance();
         return currentBalance;
-    }
+   }
 
-    fun _getNodeFarmStateInit(owner: Address): StateInit {
-        return initOf TonNodeFarm(myAddress(), owner);
-    }
+   fun _getNodeFarmStateInit(owner: Address): StateInit {
+       return initOf TonNodeFarm(myAddress(), owner);
+   }
 
-    fun _getNodeInstanceAddress(index: Int): Address {
-        let init: StateInit = initOf TonNode(myAddress(), index);
-        let nodeAddress: Address = contractAddress(init);
+   fun _getNodeInstanceAddress(index: Int): Address {
+       let init: StateInit = initOf TonNode(myAddress(), index);
+       let nodeAddress: Address = contractAddress(init);
 
-        return nodeAddress;
-    }
+       return nodeAddress;
+   }
 
-    fun requireValidNodeID(ID: Int) {
-        require(ID <= self.nodesIndex, "not a valid node ID");
-    }
+   fun requireValidNodeID(ID: Int) {
+       require(ID <= self.nodesIndex, "not a valid node ID");
+   }
+
+   fun requireConsensus() {
+       require(sender() == self.consensus, "not allowed, only for consensus use");
+   }
 }

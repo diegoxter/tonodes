@@ -5,9 +5,10 @@ import {
     SandboxContract,
     TreasuryContract,
 } from "@ton/sandbox";
-import { toNano, beginCell } from "@ton/core";
+import { toNano } from "@ton/core";
 import { NodeConsensus } from "../wrappers/NodeConsensus";
-import { TonNodeManager } from "../wrappers/TonNodeManager";
+import { TonNodeAdmin } from "../wrappers/TonNodeAdmin";
+import { TonNodeFarm } from "../wrappers/TonNodeFarm";
 import { NodeCoin } from "../wrappers/NodeCoin";
 import { NodeCoinWallet } from "../build/NodeConsensus/tact_NodeCoinWallet";
 import "@ton/test-utils";
@@ -26,7 +27,7 @@ describe("NodeConsensus", () => {
     let blockchain: Blockchain;
     let deployer: SandboxContract<TreasuryContract>;
     let nodeConsensus: SandboxContract<NodeConsensus>;
-    let tonNodeManager: SandboxContract<TonNodeManager>;
+    let tonNodeManager: SandboxContract<TonNodeAdmin>;
     let token: SandboxContract<NodeCoin>;
 
     beforeEach(async () => {
@@ -35,7 +36,7 @@ describe("NodeConsensus", () => {
 
         // deploy ton node manage
         tonNodeManager = blockchain.openContract(
-            await TonNodeManager.fromInit(deployer.address),
+            await TonNodeAdmin.fromInit(deployer.address),
         );
         const tonNMDeploy = await tonNodeManager.send(
             deployer.getSender(),
@@ -150,13 +151,11 @@ describe("NodeConsensus", () => {
                 from: deployer.address,
                 to: nodeConsensus.address,
                 success: true, // ChooseWinner
-                body: beginCell().storeUint(0x193358f1, 32).endCell(),
             });
             expect(txs).toHaveTransaction({
                 from: nodeConsensus.address,
                 to: tonNodeManager.address,
                 success: true, // GetInstancesIndex
-                body: beginCell().storeUint(0x164a94f2, 32).endCell(),
             });
             expect(txs).toHaveTransaction({
                 from: tonNodeManager.address,
@@ -186,29 +185,17 @@ describe("NodeConsensus", () => {
 
         blockchain.now += 10;
 
-        const newUID = "test-uid-A";
         await tonNodeManager.send(
             deployer.getSender(),
-            { value: toNano("1.1") },
-            {
-                $$type: "DeployNode",
-                newUID: newUID + 1,
-                body: {
-                    $$type: "Params",
-                    nodeUID: newUID + 1,
-                    nodeOwner: deployer.address,
-                },
-            },
+            { value: toNano("1.5") },
+            "DeployNode",
         );
 
         blockchain.now += 10;
-
         const tx1 = await nodeConsensus.send(
             deployer.getSender(),
             { value: toNano("0.05") },
-            {
-                $$type: "ChooseWinner",
-            },
+            "ChooseWinner",
         );
 
         checkIfTxsAreCorrect(tx1.transactions);
@@ -219,25 +206,15 @@ describe("NodeConsensus", () => {
 
         await tonNodeManager.send(
             deployer.getSender(),
-            { value: toNano("1.1") },
-            {
-                $$type: "DeployNode",
-                newUID: newUID + 2,
-                body: {
-                    $$type: "Params",
-                    nodeUID: newUID + 2,
-                    nodeOwner: deployer.address,
-                },
-            },
+            { value: toNano("1.5") },
+            "DeployNode",
         );
         blockchain.now += 10;
 
         const tx2 = await nodeConsensus.send(
             deployer.getSender(),
             { value: toNano("0.05") },
-            {
-                $$type: "ChooseWinner",
-            },
+            "ChooseWinner",
         );
 
         expect(tx2.transactions).toHaveTransaction({
@@ -253,29 +230,19 @@ describe("NodeConsensus", () => {
         blockchain.now += 310;
         await tonNodeManager.send(
             deployer.getSender(),
-            { value: toNano("1.1") },
-            {
-                $$type: "DeployNode",
-                newUID: newUID + 2,
-                body: {
-                    $$type: "Params",
-                    nodeUID: newUID + 2,
-                    nodeOwner: deployer.address,
-                },
-            },
+            { value: toNano("1.5") },
+            "DeployNode",
         );
         blockchain.now += 10;
 
-        const deployedInstancesIndex = await tonNodeManager.getInstancesIndex();
+        const deployedInstancesIndex = await tonNodeManager.getNodesIndex();
         expect(deployedInstancesIndex.toString()).toEqual((initialValue + 3n).toString());
         blockchain.now += 10;
 
         const tx3 = await nodeConsensus.send(
             deployer.getSender(),
             { value: toNano("0.05") },
-            {
-                $$type: "ChooseWinner",
-            },
+            "ChooseWinner",
         );
         expect(tx3.transactions).toHaveTransaction({
             from: tonNodeManager.address,
@@ -295,7 +262,6 @@ describe("NodeConsensus", () => {
         const notDeployer4 = await blockchain.treasury("notDeployer4");
         const notDeployer5 = await blockchain.treasury("notDeployer5");
 
-        const newNodeUID = "test-id-";
         let nodeIndex = 1;
         const usersArray = [
             notDeployer,
@@ -308,16 +274,8 @@ describe("NodeConsensus", () => {
         for (const user of usersArray) {
             await tonNodeManager.send(
                 user.getSender(),
-                { value: toNano("1.1") },
-                {
-                    $$type: "DeployNode",
-                    newUID: newNodeUID + nodeIndex,
-                    body: {
-                        $$type: "Params",
-                        nodeUID: newNodeUID,
-                        nodeOwner: user.address,
-                    },
-                },
+                { value: toNano("1.5") },
+                "DeployNode",
             );
 
             nodeIndex += 1;
@@ -327,14 +285,12 @@ describe("NodeConsensus", () => {
         const tx1 = await nodeConsensus.send(
             deployer.getSender(),
             { value: toNano("0.1") },
-            {
-                $$type: "ChooseWinner",
-            },
+            "ChooseWinner",
         );
 
         const consultedNode1 = await nodeConsensus.getLastConsultedNodeId();
         const winnerNodeInfo1 = await tonNodeManager.getInstanceInfoPerIndex(consultedNode1);
-        const winnerNodeAddress1 = await token.getGetWalletAddress(winnerNodeInfo1.Address);
+        const winnerNodeAddress1 = await token.getGetWalletAddress(winnerNodeInfo1);
         const winnerWallet1 = blockchain.openContract(
             NodeCoinWallet.fromAddress(winnerNodeAddress1),
         );
@@ -363,14 +319,12 @@ describe("NodeConsensus", () => {
         const tx2 = await nodeConsensus.send(
             deployer.getSender(),
             { value: toNano("0.1") },
-            {
-                $$type: "ChooseWinner",
-            },
+            "ChooseWinner",
         );
 
         const consultedNode2 = await nodeConsensus.getLastConsultedNodeId();
         const winnerNodeInfo2 = await tonNodeManager.getInstanceInfoPerIndex(consultedNode2);
-        const winnerNodeAddress2 = await token.getGetWalletAddress(winnerNodeInfo2.Address);
+        const winnerNodeAddress2 = await token.getGetWalletAddress(winnerNodeInfo2);
         const winnerWallet2 = blockchain.openContract(
             NodeCoinWallet.fromAddress(winnerNodeAddress2),
         );
@@ -404,21 +358,12 @@ describe("NodeConsensus", () => {
     it("should pick another winner if the selected node is not active", async () => {
         const notDeployer = await blockchain.treasury("notDeployer");
 
-        const newNodeUID = "test-id-";
         for (let index = 0; index < 5; index++) {
             blockchain.now += 5;
             await tonNodeManager.send(
                 notDeployer.getSender(),
-                { value: toNano("1.1") },
-                {
-                    $$type: "DeployNode",
-                    newUID: newNodeUID + (index + 1),
-                    body: {
-                        $$type: "Params",
-                        nodeUID: newNodeUID,
-                        nodeOwner: notDeployer.address,
-                    },
-                },
+                { value: toNano("1.5") },
+                "DeployNode",
             );
 
             blockchain.now += 10;
@@ -429,9 +374,7 @@ describe("NodeConsensus", () => {
         const tx1 = await nodeConsensus.send(
             deployer.getSender(),
             { value: toNano("0.5") },
-            {
-                $$type: "ChooseWinner",
-            },
+            "ChooseWinner",
         );
 
         const externalsPerTx1: ExternalOut[][] = tx1.transactions.map((tx): ExternalOut[] => {
@@ -473,9 +416,7 @@ describe("NodeConsensus", () => {
         const tx2 = await nodeConsensus.send(
             deployer.getSender(),
             { value: toNano("0.5") },
-            {
-                $$type: "ChooseWinner",
-            },
+            "ChooseWinner",
         );
 
         expect(tx2.transactions).toHaveTransaction({
@@ -491,7 +432,7 @@ describe("NodeConsensus", () => {
 
         const consultedNode1 = await nodeConsensus.getLastConsultedNodeId();
         const winnerNodeInfo1 = await tonNodeManager.getInstanceInfoPerIndex(consultedNode1);
-        const winnerNodeAddress1 = await token.getGetWalletAddress(winnerNodeInfo1.Address);
+        const winnerNodeAddress1 = await token.getGetWalletAddress(winnerNodeInfo1);
         const winnerWallet1 = blockchain.openContract(
             NodeCoinWallet.fromAddress(winnerNodeAddress1),
         );
@@ -509,72 +450,75 @@ describe("NodeConsensus", () => {
     });
 
     it("should allow node owners to collect their rewards", async () => {
+        const notDeployer = await blockchain.treasury("notDeployer");
         await tonNodeManager.send(
-            deployer.getSender(),
-            { value: toNano("1.1") },
-            {
-                $$type: "DeployNode",
-                newUID: "test-node",
-                body: {
-                    $$type: "Params",
-                    nodeUID: "test-node",
-                    nodeOwner: deployer.address,
-                },
-            },
+            notDeployer.getSender(),
+            { value: toNano("1.5") },
+            "DeployNode",
         );
 
         await nodeConsensus.send(
             deployer.getSender(),
             { value: toNano("0.5") },
-            {
-                $$type: "ChooseWinner",
-            },
+            "ChooseWinner",
         );
 
         const consultedNode1 = await nodeConsensus.getLastConsultedNodeId();
         const winnerNodeInfo1 = await tonNodeManager.getInstanceInfoPerIndex(consultedNode1);
-        const winnerNodeAddress1 = await token.getGetWalletAddress(winnerNodeInfo1.Address);
+        const lastConsultedNodeAddress = await nodeConsensus.getLastConsultedNodeAddress();
+        expect(winnerNodeInfo1.equals(lastConsultedNodeAddress)).toBeTruthy();
+        const winnerNodeAddress1 = await token.getGetWalletAddress(winnerNodeInfo1);
         const winnerWallet1 = blockchain.openContract(
             NodeCoinWallet.fromAddress(winnerNodeAddress1),
         );
+        const notDeployerNodeFarm = blockchain.openContract(
+            await TonNodeFarm.fromInit(tonNodeManager.address, notDeployer.address),
+        );
         const tx = await tonNodeManager.send(
-            deployer.getSender(),
+            notDeployer.getSender(),
             { value: toNano("1.1") },
             {
                 $$type: "CollectReward",
-                forAll: true,
-                nodeID: null,
+                forAll: false,
+                nodeID: 1n,
+                ncoin: token.address,
             },
+        );
+
+        const notDeployerAddress = await token.getGetWalletAddress(notDeployer.address);
+        const notDeployerWallet = blockchain.openContract(
+            NodeCoinWallet.fromAddress(notDeployerAddress),
         );
 
         const txs = tx.transactions;
         expect(txs).toHaveTransaction({
-            from: tonNodeManager.address,
-            to: winnerNodeInfo1.Address, // Collect
+            from: notDeployerNodeFarm.address,
+            to: winnerNodeInfo1, // Collect
             success: true,
-            op: 0x37e66f93,
+            op: 0x7440621b,
         });
         expect(txs).toHaveTransaction({
-            from: winnerNodeInfo1.Address,
+            from: winnerNodeInfo1,
             to: winnerWallet1.address, // "balance"
             success: true,
         });
         expect(txs).toHaveTransaction({
             from: winnerWallet1.address,
-            to: winnerNodeInfo1.Address, // CallerBalance
+            to: winnerNodeInfo1, // CallerBalance
             success: true,
             op: 0x5e358d46,
+        });
+        expect(txs).toHaveTransaction({
+            from: winnerWallet1.address,
+            to: notDeployerWallet.address, // JettonTransfer
+            success: true,
+            deploy: true,
         });
 
         const winnerBalance1 = (await winnerWallet1.getGetWalletData()).balance;
         expect(winnerBalance1).toEqual(0n);
 
-        const deployerAddress = await token.getGetWalletAddress(deployer.address);
-        const deployerWallet = blockchain.openContract(
-            NodeCoinWallet.fromAddress(deployerAddress),
-        );
-
-        const deployerBalance = (await deployerWallet.getGetWalletData()).balance;
-        expect(deployerBalance).toEqual(toNano("5"));
+        const notDeployerBalance = (await notDeployerWallet.getGetWalletData()).balance;
+        expect(notDeployerBalance).toEqual(toNano("5"));
     });
 });

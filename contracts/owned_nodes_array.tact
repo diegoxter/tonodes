@@ -31,6 +31,10 @@ contract OwnedNodesArray with Deployable, Ownable {
         });
     }
 
+    receive("owned_instances_ids") {
+       dump("here!"); 
+    }
+
     receive(msg: Delete) {
         self.requireOwner();
         self.reply(self.array.deleteIdx(msg.index).toCoinsString().asComment());

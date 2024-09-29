@@ -1,1 +1,1 @@
-export * from "../build/NodeConsensus/tact_NodeCoinWallet";
+export * from "../build/TonNodeAdmin/tact_NodeCoinWallet";

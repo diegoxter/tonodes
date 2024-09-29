@@ -4,10 +4,7 @@ import "./ncoin.tact";
 
 message Collect {
     ncoin: Address;
-}
-
-message NodeInit {
-    owner: Address;
+    farm_owner: Address;
 }
 
 struct NodeState {
@@ -24,17 +21,22 @@ message NodeActiveStatus {
     isActive: Bool;
 }
 
+const zeroAddress: Address = newAddress(0, 0x0000000000000000000000000000000000000000000000000000000000000000);
+
+
 contract TonNode with Deployable, Ownable, OwnableTransferable {
     nodeID: Int;
     ton_node_admin: Address;
-    owner: Address;
+    owner: Address; // NodeFarm
+    farm_owner: Address; // Actual user
     nodeStartTime: Int as uint32;  // unix timestamp
     nodeEndTime: Int as uint32;    // in seconds
 
     init(tna: Address, ID: Int) {
         self.nodeID = ID;
         self.ton_node_admin = tna;
-        self.owner = sender();
+        self.farm_owner = zeroAddress;
+        self.owner = sender(); // NodeFarm
         self.nodeEndTime = 86400; // 24 hours in seconds
 
         let startTime = now();
@@ -53,8 +55,8 @@ contract TonNode with Deployable, Ownable, OwnableTransferable {
             body: JettonTransfer{
                 query_id: 0,
                 amount: msg.balance,
-                destination: self.owner,
-                response_destination: self.owner,
+                destination: self.farm_owner,
+                response_destination: self.farm_owner,
                 custom_payload: emptyCell(),
                 forward_ton_amount: 0,
                 forward_payload: beginCell().endCell().asSlice(),
@@ -63,6 +65,9 @@ contract TonNode with Deployable, Ownable, OwnableTransferable {
     }
 
     receive(msg: Collect) {
+        self.requireOwner();
+        self.farm_owner = msg.farm_owner;
+
         let wallet: Address = contractAddress(initOf NodeCoinWallet(myAddress(), msg.ncoin));
         send(SendParameters{
             to: wallet,
@@ -79,8 +84,7 @@ contract TonNode with Deployable, Ownable, OwnableTransferable {
     }
 
     receive("refill") {
-
-        require(sender() == self.owner, "refill: not authorized");
+        self.requireOwner();
         let currentTime: Int = now();
         require(currentTime >= self.nodeStartTime + 26600,
             "refill: must refill at least 12 hours before the node closes");

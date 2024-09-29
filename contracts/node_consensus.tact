@@ -3,9 +3,6 @@ import "./ton_node_manager.tact";
 import "./ton_node.tact";
 import "./ncoin.tact";
 
-message ChooseWinner{
-}
-
 
 contract NodeConsensus with Deployable {
     ///////////////////////////////////
@@ -20,7 +17,7 @@ contract NodeConsensus with Deployable {
     currentInstancesIndex: Int;
     lastConsensusReachedIn: Int as uint64 = 0;
     minutesForNextConsensus: Int as uint8 = 5;
-    lastConsultedNode: Address;
+    lastConsultedNodeAddress: Address;
     lastConsultedNodeID: Int = 0;
     attempts: Int = 0;
     multiplier: Int = 1;
@@ -31,7 +28,7 @@ contract NodeConsensus with Deployable {
         self.currentInstancesIndex = 0;
         self.ncoin = ncoin;
 
-        self.lastConsultedNode = self.zeroWallet;
+        self.lastConsultedNodeAddress = self.zeroWallet;
         self.ncoinWallet = self.zeroWallet;
 
         send(SendParameters{
@@ -43,7 +40,7 @@ contract NodeConsensus with Deployable {
 
     }
 
-    receive(_: ChooseWinner){
+    receive("ChooseWinner"){
         require(now() >= self.lastConsensusReachedIn + (60 * self.minutesForNextConsensus),
            "chooseWinner: must be at least five minutes after the last consensus");
 
@@ -51,7 +48,7 @@ contract NodeConsensus with Deployable {
             to: self.nodeManager,
             value: 0,
             mode: SendRemainingValue + SendIgnoreErrors,
-            body: GetInstancesIndex{}.toCell(),
+            body: "GetInstancesIndex".asComment(),
         });
     }
 
@@ -59,7 +56,7 @@ contract NodeConsensus with Deployable {
         require(sender() == self.nodeManager, "InstanceIndex: Unauthorized");
 
         let instanceAddress: Address = msg.instanceAddy;
-        self.lastConsultedNode = msg.instanceAddy;
+        self.lastConsultedNodeAddress = msg.instanceAddy;
 
         send(SendParameters{
             to: instanceAddress,
@@ -77,7 +74,7 @@ contract NodeConsensus with Deployable {
     }
 
     receive(msg: NodeActiveStatus) {
-        require(sender() == self.lastConsultedNode, "nodeActiveStatus: Unauthorized");
+        require(sender() == self.lastConsultedNodeAddress, "nodeActiveStatus: Unauthorized");
 
         let emit_msg: StringBuilder = beginString();
         emit_msg.append("Attempt number ");
@@ -91,7 +88,7 @@ contract NodeConsensus with Deployable {
                 value: 0,
                 mode: SendRemainingValue + SendIgnoreErrors,
                 body: MintAmountTo{
-                    to: self.lastConsultedNode,
+                    to: self.lastConsultedNodeAddress,
                     amount: ton("5") * self.multiplier
                 }.toCell(),
             });
@@ -154,6 +151,10 @@ contract NodeConsensus with Deployable {
 
     get fun currentInstancesIndex(): Int {
         return self.currentInstancesIndex;
+    }
+
+    get fun lastConsultedNodeAddress(): Address {
+        return self.lastConsultedNodeAddress;
     }
 
     get fun lastConsultedNodeID(): Int {
