@@ -14,9 +14,6 @@ struct NodeState {
     nodeEndTime: Int as uint64;    // in seconds
 }
 
-message GetIsNodeActiveStatus {
-}
-
 message NodeActiveStatus {
     isActive: Bool;
 }
@@ -77,7 +74,7 @@ contract TonNode with Deployable, Ownable, OwnableTransferable {
         });
     }
 
-    receive(_: GetIsNodeActiveStatus) {
+    receive("GetIsNodeActiveStatus") {
         self.reply(NodeActiveStatus{
             isActive: (self.nodeStartTime + self.nodeEndTime) > now()
         }.toCell());

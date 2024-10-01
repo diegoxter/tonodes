@@ -3,21 +3,46 @@ import { toNano } from "@ton/core";
 import { TonNodeAdmin } from "../wrappers/TonNodeAdmin";
 import { TonNode } from "../wrappers/TonNode";
 import { TonNodeFarm } from "../wrappers/TonNodeFarm";
+import { NodeCoin } from "../wrappers/NodeCoin";
 import { OwnedNodesArray } from "../wrappers/OwnedNodesArray";
 import "@ton/test-utils";
+import { buildOnchainMetadata } from "../scripts/jetton-helpers";
 
 const cleanObject = <T>(obj: T): T => JSON.parse(JSON.stringify(obj));
+const jettonParams = {
+    name: "NodeCoin",
+    description: "The coin of your favorite Node provider",
+    symbol: "NCOI",
+    image: "https://play-lh.googleusercontent.com/ahJtMe0vfOlAu1XJVQ6rcaGrQBgtrEZQefHy7SXB7jpijKhu1Kkox90XDuH8RmcBOXNn",
+};
+let content = buildOnchainMetadata(jettonParams);
+let max_supply = toNano(1234766689011);
 
 describe("TonNodeAdmin", () => {
     let blockchain: Blockchain;
     let deployer: SandboxContract<TreasuryContract>;
     let tonNodeAdmin: SandboxContract<TonNodeAdmin>;
+    let token: SandboxContract<NodeCoin>;
 
     beforeEach(async () => {
         blockchain = await Blockchain.create();
         deployer = await blockchain.treasury("deployer");
+        // deploy token
+        token = blockchain.openContract(
+            await NodeCoin.fromInit(deployer.address, content, max_supply),
+        );
+        await token.send(
+            deployer.getSender(),
+            { value: toNano("0.05") },
+            {
+                $$type: "Deploy",
+                queryId: 0n,
+            },
+        );
 
-        tonNodeAdmin = blockchain.openContract(await TonNodeAdmin.fromInit(deployer.address));
+        tonNodeAdmin = blockchain.openContract(
+            await TonNodeAdmin.fromInit(deployer.address, token.address),
+        );
 
         const deployResult = await tonNodeAdmin.send(
             deployer.getSender(),
@@ -83,9 +108,7 @@ describe("TonNodeAdmin", () => {
         const failedChangeDCost3 = await tonNodeAdmin.send(
             notDeployer.getSender(),
             { value: toNano("0.1") },
-            {
-                $$type: "Withdraw",
-            },
+            "Withdraw",
         );
 
         expect(failedChangeDCost3.transactions).toHaveTransaction({
@@ -125,7 +148,11 @@ describe("TonNodeAdmin", () => {
         );
 
         const notDeployerNodeFarm = blockchain.openContract(
-            await TonNodeFarm.fromInit(tonNodeAdmin.address, notDeployer.address),
+            await TonNodeFarm.fromInit(
+                tonNodeAdmin.address,
+                token.address,
+                notDeployer.address,
+            ),
         );
 
         const deployedInstancesIndex = await tonNodeAdmin.getNodesIndex();
@@ -196,7 +223,11 @@ describe("TonNodeAdmin", () => {
         const ownedNodesPerUserArray = [];
         for (let index = 0; index < usersArray.length; index++) {
             const userNodeFarm = blockchain.openContract(
-                await TonNodeFarm.fromInit(tonNodeAdmin.address, usersArray[index].address),
+                await TonNodeFarm.fromInit(
+                    tonNodeAdmin.address,
+                    token.address,
+                    usersArray[index].address,
+                ),
             );
 
             const ownedNodesArray = blockchain.openContract(
@@ -265,9 +296,7 @@ describe("TonNodeAdmin", () => {
         const withdrawTx = await tonNodeAdmin.send(
             deployer.getSender(),
             { value: toNano("0.1") },
-            {
-                $$type: "Withdraw",
-            },
+            "Withdraw",
         );
 
         expect(withdrawTx.transactions).toHaveTransaction({
@@ -324,7 +353,11 @@ describe("TonNodeAdmin", () => {
         );
 
         const notDeployerNodeFarm = blockchain.openContract(
-            await TonNodeFarm.fromInit(tonNodeAdmin.address, notDeployer.address),
+            await TonNodeFarm.fromInit(
+                tonNodeAdmin.address,
+                token.address,
+                notDeployer.address,
+            ),
         );
 
         expect(refillTx.transactions).toHaveTransaction({

@@ -10,6 +10,10 @@ message Delete {
     index: Int;
 }
 
+message OwnedInstances {
+    instances: Array;
+}
+
 contract OwnedNodesArray with Deployable, Ownable {
     array: Array;
     owner: Address;
@@ -32,7 +36,7 @@ contract OwnedNodesArray with Deployable, Ownable {
     }
 
     receive("owned_instances_ids") {
-       dump("here!"); 
+       self.reply(OwnedInstances{instances: self.array}.toCell());
     }
 
     receive(msg: Delete) {
@@ -44,11 +48,11 @@ contract OwnedNodesArray with Deployable, Ownable {
         return self.array;
     }
 
-    get fun findItemIndexByID(ID: Int): Int {
+    get fun findItemIndexByID(ID: Int): Int? {
         return self._findItemArrayIndexByID(ID);
     }
 
-    fun _findItemArrayIndexByID(ID: Int): Int {
+    fun _findItemArrayIndexByID(ID: Int): Int? {
         let index: Int? = null;
 
 
@@ -58,6 +62,6 @@ contract OwnedNodesArray with Deployable, Ownable {
            }
         }
 
-        return index!!;
+        return index;
     }
 }

@@ -53,7 +53,7 @@ contract NodeConsensus with Deployable {
     }
 
     receive(msg: InstanceAddy) {
-        require(sender() == self.nodeManager, "InstanceIndex: Unauthorized");
+        require(sender() == self.nodeManager, "InstanceAddy: Unauthorized");
 
         let instanceAddress: Address = msg.instanceAddy;
         self.lastConsultedNodeAddress = msg.instanceAddy;
@@ -62,7 +62,7 @@ contract NodeConsensus with Deployable {
             to: instanceAddress,
             value: 0,
             mode: SendRemainingValue + SendIgnoreErrors,
-            body: GetIsNodeActiveStatus{}.toCell(),
+            body: "GetIsNodeActiveStatus".asComment(),
         });
     }
 
@@ -70,7 +70,7 @@ contract NodeConsensus with Deployable {
         require(sender() == self.nodeManager, "InstanceIndex: Unauthorized");
         self.currentInstancesIndex = msg.index;
 
-        self.getInstanceInfo(msg.index);
+        self._getInstanceInfo(msg.index);
     }
 
     receive(msg: NodeActiveStatus) {
@@ -117,7 +117,7 @@ contract NodeConsensus with Deployable {
             } else {
                 emit("Failed to pick a valid node! Retrying...".asComment());
 
-                self.getInstanceInfo(self.currentInstancesIndex);
+                self._getInstanceInfo(self.currentInstancesIndex);
             }
         }
     }
@@ -129,11 +129,7 @@ contract NodeConsensus with Deployable {
         self.ncoinWallet = msg.jettonWallet;
     }
 
-    receive("ncoin") {
-        self.reply(Ncoin{nCoin:self.ncoin}.toCell());
-    }
-
-    fun getInstanceInfo(instancesIndex: Int) {
+    fun _getInstanceInfo(instancesIndex: Int) {
         let chosen: Int = random(1, instancesIndex);
         self.lastConsultedNodeID = chosen;
 
