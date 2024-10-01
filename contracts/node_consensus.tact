@@ -35,7 +35,7 @@ contract NodeConsensus with Deployable {
             to: ncoin,
             value: 0,
             mode: SendRemainingValue + SendIgnoreErrors,
-            body: GetNodeConsensusWallet{}.toCell(),
+            body: "GetNodeConsensusWallet".asComment(),
         });
 
     }

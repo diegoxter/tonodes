@@ -2,9 +2,6 @@ import "@stdlib/deploy";
 import "./imports/jetton_master";
 import "./imports/jetton_wallet";
 
-message GetNodeConsensusWallet {
-}
-
 message NodeConsensusWallet {
     jettonWallet: Address;
 }
@@ -97,7 +94,7 @@ contract NodeCoin with JettonMaster, Deployable {
         self.mintable = !self.mintable;
     }
 
-    receive(_: GetNodeConsensusWallet) {
+    receive("GetNodeConsensusWallet") {
         self.reply(NodeConsensusWallet{
             jettonWallet: self._get_wallet_address(sender())
         }.toCell());
